@@ -1,9 +1,9 @@
 import groovy.sql.Sql
 
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.sql.ResultSet
 
+@GrabConfig(systemClassLoader = true)
 @Grab(group='org.duckdb', module='duckdb_jdbc', version='1.2.2.0')
 @Grab(group='com.oracle.database.jdbc', module='ojdbc8', version='19.3.0.0')
 
@@ -42,7 +42,6 @@ Sql.withInstance('jdbc:duckdb:') { duck ->
     }
 
     // Using DuckDb features write GRAD_SURVEY table back to execl in partitioned folder structure
-    //println outFilePath.toAbsolutePath().toString()
     duck.execute(
             """
                 COPY (
