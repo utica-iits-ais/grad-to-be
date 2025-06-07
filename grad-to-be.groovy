@@ -1,7 +1,12 @@
 import groovy.sql.Sql
 
+import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
 import java.sql.ResultSet
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @GrabConfig(systemClassLoader = true)
 @Grab(group='org.duckdb', module='duckdb_jdbc', version='1.2.2.0')
@@ -17,7 +22,7 @@ Sql.withInstance('jdbc:duckdb:') { duck ->
             """
             CREATE TABLE GRAD_SURVEY AS
             SELECT * 
-              FROM READ_XLSX(${inFile.toAbsolutePath().toString()},ALL_VARCHAR=TRUE)
+              FROM READ_XLSX(${inFile.toAbsolutePath().toString()},EMPTY_AS_VARCHAR=TRUE)
             """
     )
     def alt = duck.execute(
@@ -48,13 +53,17 @@ Sql.withInstance('jdbc:duckdb:') { duck ->
                 SELECT *
                   FROM GRAD_SURVEY 
                 ) TO "${outFilePath.toAbsolutePath().toString()}"
-                (FORMAT XLSX
+                (HEADER TRUE
+                ,FORMAT XLSX
                 ,PARTITION_BY (LEVL)
-                ,OVERWRITE_OR_IGNORE
+                ,OVERWRITE
                 ,WRITE_PARTITION_COLUMNS
-                ,FILENAME_PATTERN 'grad_to_be')
-                """
+                ,FILENAME_PATTERN 'grad-to-be-{i}')
+                """.toString()
     )
+
+
+    zipFile(outFilePath)
 }
 
 /**
@@ -99,6 +108,29 @@ def updateGradSurvey(Sql duck, String bannerId, String levl, String camp) {
              WHERE "Banner ID" = :id     
             """
     duck.execute(stmt, id:bannerId, levl:levl, camp:camp)
+}
+
+/**
+ * Take folder containing partitioned xlsx files and turn them in a zip file to be sent
+ * @param path
+ * @return
+ */
+def zipFile(Path path) {
+    Files.newOutputStream(path.getParent().resolve(path.getFileName().toString() + ".zip"), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).withCloseable { os ->
+        new ZipOutputStream(os).withCloseable { zos ->
+            Files.walk(path).forEach { p ->
+                def rp = path.relativize(p)
+                if (Files.isDirectory(p)) {
+                    zos.putNextEntry(new ZipEntry(rp.toString() + '/'))
+                    zos.closeEntry()
+                } else {
+                    zos.putNextEntry(new ZipEntry(rp.toString()))
+                    Files.copy(p,zos)
+                    zos.closeEntry()
+                }
+            }
+        }
+    }
 }
 
 /**
